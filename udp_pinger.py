@@ -32,15 +32,15 @@ class Pinger:
         k = 0
         while True:
             cur_time = time.time()
-            if time.time() - last_ping >= 1:
+            if cur_time - last_ping >= 1:
                 if self.dst_port is not None:
                     ping_time = cur_time
                     msg = f"PING {k} {ping_time:0.5f} from {self.my_name}"
                     print(f'Sending "{msg}" to port {self.dst_port}')
                     self.s.sendto(msg.encode('utf8'), (self.dst_host, self.dst_port))
-                    last_ping = time.time()
+                    last_ping = cur_time
 
-            if not peer_knocked and time.time() - last_knock >= 0.01:
+            if not peer_knocked and cur_time - last_knock >= 0.01:
                 msg = f"KNOCK {k} from {self.my_name}"
                 p0 = self.probe_port
                 for i in range(self.NUM_PROBES):
@@ -50,6 +50,7 @@ class Pinger:
                         self.probe_port = self.min_probe_port
                 p1 = self.probe_port
                 print(f'Sent burst of {self.NUM_PROBES} msgs to ports {p0}-{p1}')
+                last_knock = cur_time
 
             try:
                 ret, sender = self.s.recvfrom(1024)
