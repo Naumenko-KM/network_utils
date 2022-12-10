@@ -23,12 +23,25 @@ class Pinger:
         self.s.bind((my_host, my_port))
 
     def send_recv_pings(self):
-        for k in range(100000):
-            msg = f"PING {k} {time.time()} from {self.my_name}"
-            if self.dst_port:
-                print(f'Sending {msg} to port {self.dst_port}')
-                self.s.sendto(msg.encode('utf8'), (self.dst_host, self.dst_port))
-            else:
+        t0 = time.time()
+
+        peer_knocked = False
+        last_ping = 0
+        last_knock = 0
+
+        k = 0
+        while True:
+            cur_time = time.time()
+            if time.time() - last_ping >= 1:
+                if self.dst_port is not None:
+                    ping_time = cur_time
+                    msg = f"PING {k} {ping_time:0.5f} from {self.my_name}"
+                    print(f'Sending "{msg}" to port {self.dst_port}')
+                    self.s.sendto(msg.encode('utf8'), (self.dst_host, self.dst_port))
+                    last_ping = time.time()
+
+            if not peer_knocked and time.time() - last_knock >= 0.01:
+                msg = f"KNOCK {k} from {self.my_name}"
                 p0 = self.probe_port
                 for i in range(self.NUM_PROBES):
                     self.s.sendto(msg.encode('utf8'), (self.dst_host, self.probe_port))
@@ -36,7 +49,6 @@ class Pinger:
                     if self.probe_port > self.max_probe_port:
                         self.probe_port = self.min_probe_port
                 p1 = self.probe_port
-
                 print(f'Sent burst of {self.NUM_PROBES} msgs to ports {p0}-{p1}')
 
             try:
@@ -44,23 +56,28 @@ class Pinger:
                 print(f'Got from {sender}', ret)
                 ret = ret.decode('utf8').split()
 
-                if ret[0] == 'PING':
+                if ret[0] == 'KNOCK':
                     if sender[0] == self.dst_host and self.dst_port is None:
+                        print('Got knock!')
                         self.dst_port = sender[1]
-                    else:
-                        if self.dst_port:
-                            msg = f"PONG {ret[1]} {ret[2]} from {self.my_name}"
-                            print(f'Sending {msg} to port {self.dst_port}')
-                            self.s.sendto(msg.encode('utf8'), (self.dst_host, self.dst_port))
+                elif ret[0] == 'PING':
+                    peer_knocked = True
+                    if self.dst_port:
+                        msg = f"PONG {ret[1]} {ret[2]} from {self.my_name}"
+                        print(f'Replying "{msg}" to port {self.dst_port}')
+                        self.s.sendto(msg.encode('utf8'), (self.dst_host, self.dst_port))
+                elif ret[0] == 'PONG':
+                    dt = cur_time - float(ret[2])
+                    print(f'Received PONG {ret[1]} dt={dt:.6f}')
                 else:
-                    ret[0] == 'PONG'
-                    dt = time.time() - float(ret[2])
-                    print(f'Received PONG {ret[1]} dt={dt}')
+                    print('Strange msg', ret)
 
             except BlockingIOError:
                 pass
 
-            time.sleep(0.01 if self.dst_port is None else 1)
+            k += 1
+
+        print('Exiting, k=', k)
 
 
 def main():
