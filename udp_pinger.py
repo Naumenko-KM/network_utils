@@ -24,7 +24,7 @@ class Pinger:
 
     def send_recv_pings(self):
         for k in range(100000):
-            msg = f"PING {k} from {self.my_name}"
+            msg = f"PING {k} {time.time()} from {self.my_name}"
             if self.dst_port:
                 print(f'Sending {msg} to port {self.dst_port}')
                 self.s.sendto(msg.encode('utf8'), (self.dst_host, self.dst_port))
@@ -39,12 +39,23 @@ class Pinger:
 
                 print(f'Sent burst of {self.NUM_PROBES} msgs to ports {p0}-{p1}')
 
-
             try:
                 ret, sender = self.s.recvfrom(1024)
                 print(f'Got from {sender}', ret)
-                if sender[0] == self.dst_host and self.dst_port is None:
-                    self.dst_port = sender[1]
+                ret = ret.decode('utf8').split()
+
+                if ret[0] == 'PING':
+                    if sender[0] == self.dst_host and self.dst_port is None:
+                        self.dst_port = sender[1]
+                    else:
+                        if self.dst_port:
+                            msg = f"PONG {ret[1]} {ret[2]} from {self.my_name}"
+                            print(f'Sending {msg} to port {self.dst_port}')
+                            self.s.sendto(msg.encode('utf8'), (self.dst_host, self.dst_port))
+                else:
+                    ret[0] == 'PONG'
+                    dt = time.time() - float(ret[2])
+                    print(f'Received PONG {ret[1]} dt={dt}')
 
             except BlockingIOError:
                 pass
