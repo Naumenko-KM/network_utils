@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 from argparse import ArgumentParser
+import random
+import string
 import socket
 import time
 
 class Pinger:
     NUM_PROBES = 10
-    def __init__(self, dst_host, dst_port, my_host, my_port, min_probe_port, max_probe_port, my_name='unnamed'):
+    def __init__(self, dst_host, dst_port, my_host, my_port, min_probe_port, max_probe_port, payload, my_name='unnamed'):
         self.my_name = my_name
 
         self.dst_host = dst_host
@@ -16,6 +18,8 @@ class Pinger:
         self.max_probe_port = max_probe_port
 
         self.probe_port = None if dst_port else 1024
+
+        self.payload_size = payload
 
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.s.setblocking(False)
@@ -35,8 +39,9 @@ class Pinger:
             if cur_time - last_ping >= 1:
                 if self.dst_port is not None:
                     ping_time = cur_time
-                    msg = f"PING {k} {ping_time:0.5f} from {self.my_name}"
-                    print(f'Sending "{msg}" to port {self.dst_port}')
+                    payload = ''.join(random.choices(string.ascii_uppercase + string.digits, k=self.payload_size))
+                    msg = f"PING {k} {ping_time:0.5f} from {self.my_name} PAYLOAD {payload}"
+                    print(f'Sending "{msg[:100]}" to port {self.dst_port}')
                     self.s.sendto(msg.encode('utf8'), (self.dst_host, self.dst_port))
                     last_ping = cur_time
 
@@ -53,8 +58,8 @@ class Pinger:
                 last_knock = cur_time
 
             try:
-                ret, sender = self.s.recvfrom(1024)
-                print(f'Got from {sender}', ret)
+                ret, sender = self.s.recvfrom(65000)
+                print(f'Got from {sender}', ret[:100])
                 ret = ret.decode('utf8').split()
 
                 if ret[0] == 'KNOCK':
@@ -64,8 +69,8 @@ class Pinger:
                 elif ret[0] == 'PING':
                     peer_knocked = True
                     if self.dst_port:
-                        msg = f"PONG {ret[1]} {ret[2]} from {self.my_name}"
-                        print(f'Replying "{msg}" to port {self.dst_port}')
+                        msg = f"PONG {ret[1]} {ret[2]} from {self.my_name} {ret[5]} {ret[6]}"
+                        print(f'Replying "{msg[:100]}" to port {self.dst_port}')
                         self.s.sendto(msg.encode('utf8'), (self.dst_host, self.dst_port))
                 elif ret[0] == 'PONG':
                     dt = cur_time - float(ret[2])
@@ -90,10 +95,13 @@ def main():
     parser.add_argument("--dst_port", type=int)
     parser.add_argument("--min_probe_port", type=int, default=1024)
     parser.add_argument("--max_probe_port", type=int, default=4000)
+    parser.add_argument("--payload", type=int, default=1)
 
     args = parser.parse_args()
 
-    pinger = Pinger(args.dst_host, args.dst_port, my_host=args.my_host, my_port=args.my_port, my_name=args.name, min_probe_port = args.min_probe_port, max_probe_port=args.max_probe_port)
+    pinger = Pinger(args.dst_host, args.dst_port, my_host=args.my_host, my_port=args.my_port, my_name=args.name,
+                    min_probe_port = args.min_probe_port, max_probe_port=args.max_probe_port,
+                    payload=args.payload)
     pinger.probe_port = args.min_probe_port
     pinger.send_recv_pings()
 
