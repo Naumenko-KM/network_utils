@@ -8,7 +8,7 @@ import time
 
 class Pinger:
     NUM_PROBES = 10
-    def __init__(self, dst_host, dst_port, my_host, my_port, min_probe_port, max_probe_port, payload, my_name='unnamed'):
+    def __init__(self, dst_host, dst_port, my_host, my_port, min_probe_port, max_probe_port, payload, knock_period, my_name='unnamed'):
         self.my_name = my_name
 
         self.dst_host = dst_host
@@ -20,6 +20,7 @@ class Pinger:
         self.probe_port = None if dst_port else 1024
 
         self.payload_size = payload
+        self.knock_period = knock_period
 
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.s.setblocking(False)
@@ -47,16 +48,13 @@ class Pinger:
                     last_ping = ping_time
                     pk += 1
 
-            if not peer_knocked and iter_time - last_knock >= 0.01:
+            if not peer_knocked and iter_time - last_knock >= self.knock_period:
                 msg = f"KNOCK {k} from {self.my_name}"
-                p0 = self.probe_port
-                for i in range(self.NUM_PROBES):
-                    self.s.sendto(msg.encode('utf8'), (self.dst_host, self.probe_port))
-                    self.probe_port += 1
-                    if self.probe_port > self.max_probe_port:
-                        self.probe_port = self.min_probe_port
-                p1 = self.probe_port
-                print(f'Sent burst of {self.NUM_PROBES} msgs to ports {p0}-{p1}')
+                self.s.sendto(msg.encode('utf8'), (self.dst_host, self.probe_port))
+                self.probe_port += 1
+                if self.probe_port > self.max_probe_port:
+                    self.probe_port = self.min_probe_port
+                print(f'Sent probe msg to port {self.probe_port}')
                 last_knock = iter_time
 
             try:
@@ -65,9 +63,12 @@ class Pinger:
                 ret = ret.decode('utf8').split()
 
                 if ret[0] == 'KNOCK':
-                    if sender[0] == self.dst_host and self.dst_port is None:
-                        print('Got knock!')
-                        self.dst_port = sender[1]
+                    if self.dst_port is None:
+                        if sender[0] == self.dst_host:
+                            print('Got knock!')
+                            self.dst_port = sender[1]
+                        else:
+                            print('Got spurious message')
                 elif ret[0] == 'PING':
                     peer_knocked = True
                     if self.dst_port:
@@ -96,12 +97,13 @@ def main():
     parser.add_argument("--min_probe_port", type=int, default=1024)
     parser.add_argument("--max_probe_port", type=int, default=4000)
     parser.add_argument("--payload", type=int, default=1)
+    parser.add_argument('--knock_period', type=float, default=0.01)
 
     args = parser.parse_args()
 
     pinger = Pinger(args.dst_host, args.dst_port, my_host=args.my_host, my_port=args.my_port, my_name=args.name,
                     min_probe_port = args.min_probe_port, max_probe_port=args.max_probe_port,
-                    payload=args.payload)
+                    payload=args.payload, knock_period=args.knock_period)
     pinger.probe_port = args.min_probe_port
     pinger.send_recv_pings()
 
