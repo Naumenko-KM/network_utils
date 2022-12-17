@@ -34,18 +34,20 @@ class Pinger:
         last_knock = 0
 
         k = 0
+        pk = 0
         while True:
-            cur_time = time.time()
-            if cur_time - last_ping >= 1:
+            iter_time = time.time()
+            if iter_time - last_ping >= 0.1:
                 if self.dst_port is not None:
-                    ping_time = cur_time
+                    ping_time = time.time()
                     payload = ''.join(random.choices(string.ascii_uppercase + string.digits, k=self.payload_size))
-                    msg = f"PING {k} {ping_time:0.5f} from {self.my_name} PAYLOAD {payload}"
+                    msg = f"PING {pk} {ping_time:0.5f} from {self.my_name} PAYLOAD {payload}"
                     print(f'Sending "{msg[:100]}" to port {self.dst_port}')
                     self.s.sendto(msg.encode('utf8'), (self.dst_host, self.dst_port))
-                    last_ping = cur_time
+                    last_ping = ping_time
+                    pk += 1
 
-            if not peer_knocked and cur_time - last_knock >= 0.01:
+            if not peer_knocked and iter_time - last_knock >= 0.01:
                 msg = f"KNOCK {k} from {self.my_name}"
                 p0 = self.probe_port
                 for i in range(self.NUM_PROBES):
@@ -55,7 +57,7 @@ class Pinger:
                         self.probe_port = self.min_probe_port
                 p1 = self.probe_port
                 print(f'Sent burst of {self.NUM_PROBES} msgs to ports {p0}-{p1}')
-                last_knock = cur_time
+                last_knock = iter_time
 
             try:
                 ret, sender = self.s.recvfrom(65000)
@@ -73,8 +75,8 @@ class Pinger:
                         print(f'Replying "{msg[:100]}" to port {self.dst_port}')
                         self.s.sendto(msg.encode('utf8'), (self.dst_host, self.dst_port))
                 elif ret[0] == 'PONG':
-                    dt = cur_time - float(ret[2])
-                    print(f'Received PONG {ret[1]} dt={dt:.6f}')
+                    dt = time.time() - float(ret[2])
+                    print(f'Received PONG {ret[1]} dt {dt:.6f}')
                 else:
                     print('Strange msg', ret)
 
@@ -82,8 +84,6 @@ class Pinger:
                 pass
 
             k += 1
-
-        print('Exiting, k=', k)
 
 
 def main():
